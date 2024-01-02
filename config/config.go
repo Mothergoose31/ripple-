@@ -1,17 +1,21 @@
 package config
 
-import (
-	"strings"
-)
+import "strings"
+
+//---------------------------------------------------------------
 
 type Config struct {
 	Mongo MongoConfig
 	Path  PathConfig
 }
 
+//---------------------------------------------------------------
+
 type PathConfig struct {
 	Secrets string
 }
+
+//---------------------------------------------------------------
 
 type MongoConfig struct {
 	AuthEnabled        bool
@@ -20,13 +24,28 @@ type MongoConfig struct {
 	ConnectionInterval int
 }
 
-var App *Config
+//---------------------------------------------------------------
 
-func GetConfig(configsetting string) {
+var AppConfig *Config
+
+func GetConfig() *Config {
+	return AppConfig
+
+}
+
+//---------------------------------------------------------------
+
+func SetAppConfig(configsetting string) {
 	switch strings.ToUpper(configsetting) {
 	case "DEVELOPMENT":
-		App = DevelopmentConfig()
+		AppConfig = DevelopmentConfig()
 	case "TESTING":
-		App = TestingConfig()
+		AppConfig = TestingConfig()
 	}
+}
+
+//---------------------------------------------------------------
+
+func SecretsPath() string {
+	return AppConfig.Path.Secrets
 }

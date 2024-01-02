@@ -1,9 +1,15 @@
 package main
 
 import (
-	log "github.com/sirupsen/logrus"
+	"ripple/config"
+	"ripple/database"
+
+	"github.com/gorilla/websocket"
 )
 
+var upgrader = websocket.Upgrader{}
+
 func main() {
-	log.Info("Hello World")
+	config.SetAppConfig("DEVELOPMENT")
+	database.Connect()
 }
