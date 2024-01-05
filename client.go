@@ -32,14 +32,51 @@ func NewClient(conn *websocket.Conn, manager *ClientManager, chatroom string) *C
 }
 
 func (c *Client) ReadMessages(ctx echo.Context) {
-	if err := c.Connection.SetReadDeadline(time.Now().Add(pingWait)); err != nil {
+	if err := c.setReadDeadline(); err != nil {
 		log.Println("SetReadDeadline error:", err)
 		return
 	}
-	//  writewait logic needs to be added
+
+	c.setupPongHandler(ctx)
+
+	defer c.cleanupClient()
+
+	for {
+		if err := c.processIncomingMessage(); err != nil {
+			log.Println("ReadMessage error:", err)
+			return
+		}
+	}
 }
 
-func (cm *ClientManager) WriteMessages(msg string, chatroom string) error {
+func (c *Client) setReadDeadline() error {
+	// Assuming writeWait is a properly defined duration
+	return c.Connection.SetReadDeadline(time.Now().Add(writeWait))
+}
+
+func (c *Client) setupPongHandler(ctx echo.Context) {
+	c.Connection.PongHandler(func(data string) error {
+		return c.setReadDeadline()
+	})
+}
+
+func (c *Client) cleanupClient() {
+	c.Connection.Close()
+	c.Manager.ClientLists <- &ClientList{
+		Client:    c,
+		EventType: "REMOVE",
+	}
+}
+
+func (c *Client) processIncomingMessage() error {
+	_, msg, err := c.Connection.ReadMessage()
+	if err != nil {
+		return err
+	}
+	c.Manager.WriteMessage(string(msg), c.Chatroom)
+	return nil
+}
+func (cm *ClientManager) WriteMessage(msg string, chatroom string) error {
 	if clients, ok := cm.Clients[chatroom]; ok {
 		for _, client := range clients {
 			client.MessageChan <- msg
