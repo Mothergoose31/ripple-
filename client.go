@@ -21,6 +21,8 @@ var (
 	writeWait = 10 * time.Second
 )
 
+//=====================================
+
 func NewClient(conn *websocket.Conn, manager *ClientManager, chatroom string) *Client {
 	return &Client{
 		Connection:  conn,
@@ -30,6 +32,8 @@ func NewClient(conn *websocket.Conn, manager *ClientManager, chatroom string) *C
 		MessageChan: make(chan string, 100),
 	}
 }
+
+//=====================================
 
 func (c *Client) ReadMessages(ctx echo.Context) {
 	if err := c.setReadDeadline(); err != nil {
@@ -51,14 +55,45 @@ func (c *Client) ReadMessages(ctx echo.Context) {
 
 func (c *Client) setReadDeadline() error {
 	// Assuming writeWait is a properly defined duration
-	return c.Connection.SetReadDeadline(time.Now().Add(writeWait))
+	return c.Connection.SetReadDeadline(time.Now().Add(pingWait))
 }
 
+// =====================================
 func (c *Client) setupPongHandler(ctx echo.Context) {
-	c.Connection.PongHandler(func(data string) error {
-		return c.setReadDeadline()
+	if err := c.setReadDeadline(); err != nil {
+		ctx.Logger().Error(err)
+		return
+	}
+	c.Connection.SetPongHandler(func(data string) error {
+		if err := c.setReadDeadline(); err != nil {
+			ctx.Logger().Error(err)
+			return err
+		}
+		log.Println("Pong received from client:", c.ID)
+		return nil
 	})
+	defer func() {
+		c.Connection.Close()
+		c.Manager.ClientLists <- &ClientList{
+			Client:    c,
+			EventType: "REMOVE",
+		}
+	}()
+	for {
+		_, msg, err := c.Connection.ReadMessage()
+		if err != nil {
+			ctx.Logger().Error(err)
+			return
+		}
+		log.Printf("%s\n", msg)
+		if err := c.Manager.WriteMessage(string(msg), c.Chatroom); err != nil {
+			ctx.Logger().Error(err)
+			return
+		}
+	}
 }
+
+//=====================================
 
 func (c *Client) cleanupClient() {
 	c.Connection.Close()
@@ -68,6 +103,8 @@ func (c *Client) cleanupClient() {
 	}
 }
 
+//=====================================
+
 func (c *Client) processIncomingMessage() error {
 	_, msg, err := c.Connection.ReadMessage()
 	if err != nil {
@@ -76,10 +113,20 @@ func (c *Client) processIncomingMessage() error {
 	c.Manager.WriteMessage(string(msg), c.Chatroom)
 	return nil
 }
+
+//=====================================
+
 func (cm *ClientManager) WriteMessage(msg string, chatroom string) error {
 	if clients, ok := cm.Clients[chatroom]; ok {
 		for _, client := range clients {
-			client.MessageChan <- msg
+			select {
+			case client.MessageChan <- msg:
+			// message sent successfully
+
+			default:
+				// handle error
+				log.Printf("Failed to send message to client [%s] in chatroom [%s]", client.ID, chatroom)
+			}
 		}
 	}
 	return nil
